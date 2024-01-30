@@ -1,25 +1,253 @@
-import logo from './logo.svg';
-import './App.css';
+import React, { useRef, useEffect, useState } from 'react';
+import mapboxgl from '!mapbox-gl'; // eslint-disable-line import/no-webpack-loader-syntax
+import PaintMode from "./draw/src/index.js";
+import MapboxDraw from "@mapbox/mapbox-gl-draw";
+import DrawPath from './DrawPath'; // adjust the path as needed
+import StaticMode from '@mapbox/mapbox-gl-draw-static-mode';
+import Circle from 'mapbox-gl-circle';
+import {PathComputing} from './PathComputing';
+import * as turf from '@turf/turf';
 
-function App() {
+import markerImage from "./img/Marker.png";
+
+import '@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css';
+
+mapboxgl.accessToken = 'pk.eyJ1IjoibWF0aGlldWN0IiwiYSI6ImNscmo5a2pvdDAxMm0ybG53NXRlZGxoODUifQ.f56eMB0t3T9SqLPfeth2Nw';
+
+export default function App(){
+  
+  const mapContainer = useRef(null);
+  const map = useRef(null);
+  const draw = useRef(null);
+  const [lng, setLng] = useState(7.1474);
+  const [lat, setLat] = useState(46.7968);
+  const [zoom, setZoom] = useState(20);
+  const [mode, setMode] = useState('');
+  //const [[{x0,y0},{x1,y1}], setPos] = useState({x: 0, y: 0});
+  var vehiclePos = {lng:7.1474, lat:46.7968, angle:255};
+  const circleRadius = 3;
+  const precision = 0.2;
+  const maxAngle = 30;
+  const marker = useRef(null);
+  const circle = useRef(null);
+  const drawLayerId = 'trajectory';
+  const drawSourceId = 'trajectory';
+  const computedlayerId = 'computedTrajectory';
+  const computedsourceId = 'computedTrajectory';
+  const rightLimitLayerId = 'rightLimit';
+  const leftLimitLayerId = 'leftLimit';
+  const rightLimitSourceId = 'rightLimit';
+  const leftLimitSourceId = 'leftLimit';
+  const turningRadius = 0.001;
+
+  useEffect(() => {
+    if (map.current) return; // initialize map only once
+    map.current = new mapboxgl.Map({
+      container: mapContainer.current,
+      style: "https://vectortiles.geo.admin.ch/styles/ch.swisstopo.leichte-basiskarte-imagery.vt/style.json",//style: 'mapbox://styles/mapbox/satellite-v9',
+      center: [vehiclePos.lng, vehiclePos.lat],
+      zoom: zoom
+    });
+    map.current.on('move', () => {
+      setLng(map.current.getCenter().lng.toFixed(4));
+      setLat(map.current.getCenter().lat.toFixed(4));
+      setZoom(map.current.getZoom().toFixed(2));
+      //console.log(map.current.getCenter().lng.toFixed(4) + " " + map.current.getCenter().lat.toFixed(4) + " " + map.current.getZoom().toFixed(2));
+    });
+    draw.current = new MapboxDraw({
+      displayControlsDefault: false,
+      controls: {},
+      modes: Object.assign({
+        draw_paint_mode: PaintMode,
+        static_mode: StaticMode
+      }, MapboxDraw.modes),
+      defaultMode: 'static_mode'
+
+    });
+    map.current.addControl(draw.current); 
+    map.current.on('load', () => {
+      // Add sector {
+        const center = [vehiclePos.lng, vehiclePos.lat];
+        const radius = 0.003; // radius in kilometers
+        const bearing1 = vehiclePos.angle - maxAngle; // start bearing in degrees
+        const bearing2 = vehiclePos.angle + maxAngle; // end bearing in degrees
+        const options = {steps: 50, units: 'kilometers', properties: {fill: '#0f0'}};
+      var sector = turf.sector(center, radius, bearing1, bearing2,options);
+      //console.log(sector);
+      map.current.addSource('sector', {
+        'type': 'geojson',
+        'data': sector
+      });
+      map.current.addLayer({
+        'id': 'maine',
+        'type': 'fill',
+        'source': 'sector',
+        'layout': {},
+        'paint': {
+        'fill-color': '#0080ff', // blue color fill
+        'fill-opacity': 0.5
+        }
+        });
+    })
+  });
+
+  useEffect(() => {
+    //Add vehicle marker
+    if (!marker.current){
+      const img = document.createElement("img");
+      img.className = "marker";
+      img.height = 70;
+      img.src = markerImage;
+      marker.current = new mapboxgl.Marker({ element: img });
+      //Add circle
+      circle.current = new Circle({lat: vehiclePos.lat, lng: vehiclePos.lng}, circleRadius, {
+        minRadius: 2,
+        fillColor: '#29AB87'
+      }).addTo(map.current);
+    }
+    circle.current.setCenter({lat: vehiclePos.lat, lng: vehiclePos.lng});
+    marker.current.setRotationAlignment("map");
+    marker.current.setRotation(vehiclePos.angle);
+    marker.current.setLngLat([vehiclePos.lng, vehiclePos.lat]);
+    marker.current.addTo(map.current);
+    
+  }, [vehiclePos]);
+
+  
+  function drawState(mode){
+    deleteAll();
+    setMode(mode);
+    draw.current.changeMode(mode === 'dot' ? 'draw_line_string' : 'draw_paint_mode');
+    //disable map mouvement
+    if (mode === 'line'){
+      disableMovement();
+    }else{
+      enableMovement();
+    }
+    //enable draw mode
+
+    
+  }
+
+  function moveState(){
+    if (!map.current) return; // wait for map to initialize
+    setMode('move');
+    deleteAll();
+    draw.current.changeMode('static_mode');
+    enableMovement();
+  }
+
+  function deleteAll(){
+    draw.current.deleteAll();
+    deleteLayer(drawLayerId, drawSourceId);
+    deleteLayer(computedlayerId, computedsourceId);
+    deleteLayer(rightLimitLayerId, rightLimitSourceId);
+    deleteLayer(leftLimitLayerId, leftLimitSourceId);
+  }
+  function deleteLayer(layerId, sourceId){
+    if(map.current.getLayer(layerId)) {
+      map.current.removeLayer(layerId);
+    }
+    if(map.current.getSource(sourceId)){
+      map.current.removeSource(sourceId);
+    }
+  }
+
+  function enableMovement(){
+    map.current["dragPan"].enable();
+    map.current["scrollZoom"].enable();
+    map.current["boxZoom"].enable();
+    map.current["dragRotate"].enable();
+    map.current["keyboard"].enable();
+    map.current["doubleClickZoom"].enable();
+    map.current["touchZoomRotate"].enable();
+  }
+  function disableMovement(){
+    map.current["dragPan"].disable();
+    map.current["scrollZoom"].disable();
+    map.current["boxZoom"].disable();
+    map.current["dragRotate"].disable();
+    map.current["keyboard"].disable();
+    map.current["doubleClickZoom"].disable();
+    map.current["touchZoomRotate"].disable();
+  }
+
+  function exit(){
+    //Go back to main menu
+    alert("Exit");
+  }
+
+  function buildPath(){
+    enableMovement();
+    draw.current.changeMode('static_mode');
+    //Extract data points from map
+    //Process data points
+    const features = draw.current.getAll();
+    let trajectory = [];
+    let computedTrajectory = [];
+    var limits = {right:[], left:[]};
+    //Paint mode and draw line string doesn't store coordinates in the same way
+    if (features.features.length > 0) {
+      trajectory = features.features[0].geometry.coordinates;
+    }
+    if(mode === 'line'){
+      trajectory = trajectory[0];
+    }
+    deleteAll();
+    var pathComputing = new PathComputing(precision, vehiclePos, circleRadius, maxAngle, turningRadius);
+    console.log('Trajectory',trajectory);
+    var test = trajectory.map(innerArray => [...innerArray]);
+    console.log('Test',test); 
+    [computedTrajectory, limits] = pathComputing.computeTrajectory(test );
+    if(!computedTrajectory){
+      console.log("Error");
+      return;
+    }
+    /*for(let i = 0; i < computedTrajectory.length; i++){
+      computedTrajectory[i][0] = computedTrajectory[i][0] + 0.000001;
+      computedTrajectory[i][1] = computedTrajectory[i][1] + 0.000001;
+    }*/
+    displayTrajectory(drawLayerId, drawSourceId, trajectory,  '#0000FF',"solid");
+    displayTrajectory(computedlayerId, computedsourceId, computedTrajectory, '#FF0000',"solid");
+    console.log("limits : ", limits);
+    displayTrajectory(rightLimitLayerId, rightLimitSourceId, limits.rightLimit, '#FF0000',"dotted");
+    displayTrajectory(leftLimitLayerId, leftLimitSourceId, limits.leftLimit , '#FF0000',"dotted");
+    
+    
+    //Send data points to server
+  }
+
+  function displayTrajectory(layerID, sourceId, trajectory, color, lineType){
+    map.current.addSource(sourceId, {
+      type: 'geojson',
+      data: {
+        type: 'Feature',
+        geometry: {
+          type: 'LineString',
+          coordinates: trajectory
+        }
+      }
+    });
+    map.current.addLayer({
+      id: layerID,
+      type: 'line',
+      source: sourceId,
+      paint: {
+        'line-color': color,
+        'line-width': 2,
+        'line-dasharray': lineType === 'dotted' ? [1, 1] : [1]
+      }
+    });
+
+  }
+
   return (
-    <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.js</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
+    <div>
+      <div className="bar">
+        <DrawPath mode={mode} moveState={moveState} drawState={drawState}  validation={buildPath} exit={exit} />
+      </div>
+      <div ref={mapContainer} className="map-container" />
     </div>
   );
 }
 
-export default App;
