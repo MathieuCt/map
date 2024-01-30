@@ -1,3 +1,12 @@
+/**
+ * @author Mathieu Chantot <mathieu.chantot@hes-so.ch>
+ * @date 01/24
+ * 
+ * @todo look at all the todo
+ * @todo configure every transition between states
+ * @todo start integration
+ */
+
 import React, { useRef, useEffect, useState } from 'react';
 import mapboxgl from '!mapbox-gl'; // eslint-disable-line import/no-webpack-loader-syntax
 import PaintMode from "./draw/src/index.js";
@@ -12,24 +21,30 @@ import markerImage from "./img/Marker.png";
 
 import '@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css';
 
+/**@todo Remove the  access token */
 mapboxgl.accessToken = 'pk.eyJ1IjoibWF0aGlldWN0IiwiYSI6ImNscmo5a2pvdDAxMm0ybG53NXRlZGxoODUifQ.f56eMB0t3T9SqLPfeth2Nw';
 
 export default function App(){
-  
+
+  // Element to be displayed on the map.
   const mapContainer = useRef(null);
   const map = useRef(null);
   const draw = useRef(null);
-  const [lng, setLng] = useState(7.1474);
-  const [lat, setLat] = useState(46.7968);
+  const marker = useRef(null);
+  const circle = useRef(null);
   const [zoom, setZoom] = useState(20);
-  const [mode, setMode] = useState('');
-  //const [[{x0,y0},{x1,y1}], setPos] = useState({x: 0, y: 0});
-  var vehiclePos = {lng:7.1474, lat:46.7968, angle:255};
+  
+  const [drawingMode, setdrawingMode] = useState('');
+  
+  // All those const should be modified when integrating or get from a json file
   const circleRadius = 3;
   const precision = 0.2;
   const maxAngle = 30;
-  const marker = useRef(null);
-  const circle = useRef(null);
+  const turningRadius = 0.001;
+
+  /**
+   * @todo find another way to manage layer and source id
+   */
   const drawLayerId = 'trajectory';
   const drawSourceId = 'trajectory';
   const computedlayerId = 'computedTrajectory';
@@ -38,22 +53,26 @@ export default function App(){
   const leftLimitLayerId = 'leftLimit';
   const rightLimitSourceId = 'rightLimit';
   const leftLimitSourceId = 'leftLimit';
-  const turningRadius = 0.001;
+  
 
+  // This should be modified when integrating
+  var vehiclePos = {lng:7.1474, lat:46.7968, angle:255};
+
+  /**
+   * @brief Initialize the map and the draw tool
+   */
+
+  // Called at initialization.
   useEffect(() => {
-    if (map.current) return; // initialize map only once
+    // Initialize map
+    if (map.current) return; 
     map.current = new mapboxgl.Map({
       container: mapContainer.current,
-      style: "https://vectortiles.geo.admin.ch/styles/ch.swisstopo.leichte-basiskarte-imagery.vt/style.json",//style: 'mapbox://styles/mapbox/satellite-v9',
+      style: "https://vectortiles.geo.admin.ch/styles/ch.swisstopo.leichte-basiskarte-imagery.vt/style.json",
       center: [vehiclePos.lng, vehiclePos.lat],
       zoom: zoom
     });
-    map.current.on('move', () => {
-      setLng(map.current.getCenter().lng.toFixed(4));
-      setLat(map.current.getCenter().lat.toFixed(4));
-      setZoom(map.current.getZoom().toFixed(2));
-      //console.log(map.current.getCenter().lng.toFixed(4) + " " + map.current.getCenter().lat.toFixed(4) + " " + map.current.getZoom().toFixed(2));
-    });
+    // Initialize draw tool
     draw.current = new MapboxDraw({
       displayControlsDefault: false,
       controls: {},
@@ -65,15 +84,19 @@ export default function App(){
 
     });
     map.current.addControl(draw.current); 
+  });
+
+  // Called when the map is initialized or when the vehicle position is updated.
+  useEffect(() => {
+    // Initialize starting polygon
     map.current.on('load', () => {
-      // Add sector {
-        const center = [vehiclePos.lng, vehiclePos.lat];
-        const radius = 0.003; // radius in kilometers
-        const bearing1 = vehiclePos.angle - maxAngle; // start bearing in degrees
-        const bearing2 = vehiclePos.angle + maxAngle; // end bearing in degrees
-        const options = {steps: 50, units: 'kilometers', properties: {fill: '#0f0'}};
+      const center = [vehiclePos.lng, vehiclePos.lat];
+      const radius = 0.003; // radius in kilometers
+      const bearing1 = vehiclePos.angle - maxAngle; // start bearing in degrees
+      const bearing2 = vehiclePos.angle + maxAngle; // end bearing in degrees
+      const options = {steps: 50, units: 'kilometers', properties: {fill: '#0f0'}};
       var sector = turf.sector(center, radius, bearing1, bearing2,options);
-      //console.log(sector);
+      /** @todo create a generic function for adding source and layer */
       map.current.addSource('sector', {
         'type': 'geojson',
         'data': sector
@@ -89,9 +112,6 @@ export default function App(){
         }
         });
     })
-  });
-
-  useEffect(() => {
     //Add vehicle marker
     if (!marker.current){
       const img = document.createElement("img");
@@ -109,34 +129,39 @@ export default function App(){
     marker.current.setRotationAlignment("map");
     marker.current.setRotation(vehiclePos.angle);
     marker.current.setLngLat([vehiclePos.lng, vehiclePos.lat]);
-    marker.current.addTo(map.current);
-    
+    marker.current.addTo(map.current);    
   }, [vehiclePos]);
 
-  
-  function drawState(mode){
+  /**
+   * @brief Setup drawing mode.
+   * @param {string} drawingMode - The drawing mode to set
+   */
+  function drawState(drawingMode){
     deleteAll();
-    setMode(mode);
-    draw.current.changeMode(mode === 'dot' ? 'draw_line_string' : 'draw_paint_mode');
-    //disable map mouvement
-    if (mode === 'line'){
+    setdrawingMode(drawingMode);
+    draw.current.changeMode(drawingMode === 'dot' ? 'draw_line_string' : 'draw_paint_mode');
+    //disable map mouvement if needed
+    if (drawingMode === 'line'){
       disableMovement();
     }else{
       enableMovement();
-    }
-    //enable draw mode
-
-    
+    } 
   }
 
+  /**
+   * @brief Setup moving mode.
+   */
   function moveState(){
     if (!map.current) return; // wait for map to initialize
-    setMode('move');
+    setdrawingMode('move');
     deleteAll();
     draw.current.changeMode('static_mode');
     enableMovement();
   }
 
+  /**
+   * @brief Delete current draw.
+   */
   function deleteAll(){
     draw.current.deleteAll();
     deleteLayer(drawLayerId, drawSourceId);
@@ -144,6 +169,12 @@ export default function App(){
     deleteLayer(rightLimitLayerId, rightLimitSourceId);
     deleteLayer(leftLimitLayerId, leftLimitSourceId);
   }
+
+  /**
+   * @brief Delete a specific layer and source.
+   * @param {string} layerId - The layer id to delete
+   * @param {string} sourceId - The source id to delete
+   */
   function deleteLayer(layerId, sourceId){
     if(map.current.getLayer(layerId)) {
       map.current.removeLayer(layerId);
@@ -153,6 +184,9 @@ export default function App(){
     }
   }
 
+  /**
+   * @brief Enable map movement.
+   */
   function enableMovement(){
     map.current["dragPan"].enable();
     map.current["scrollZoom"].enable();
@@ -162,6 +196,9 @@ export default function App(){
     map.current["doubleClickZoom"].enable();
     map.current["touchZoomRotate"].enable();
   }
+  /**
+   * @brief Disable map movement.
+   */
   function disableMovement(){
     map.current["dragPan"].disable();
     map.current["scrollZoom"].disable();
@@ -172,44 +209,53 @@ export default function App(){
     map.current["touchZoomRotate"].disable();
   }
 
+  /**
+   * @brief Exit the drawing subapp.
+   */
   function exit(){
     //Go back to main menu
     alert("Exit");
   }
 
+  /**
+   * @brief Manage the validation of the drawing.
+   */
   function buildPath(){
+    // Go to validation "state"
     enableMovement();
     draw.current.changeMode('static_mode');
-    //Extract data points from map
-    //Process data points
-    const features = draw.current.getAll();
+    
+    //Features to be displayed
     let trajectory = [];
     let computedTrajectory = [];
     var limits = {right:[], left:[]};
+
+    //Extract data points from map
+    const features = draw.current.getAll();
+
     //Paint mode and draw line string doesn't store coordinates in the same way
     if (features.features.length > 0) {
+      /** @todo there is anothere way to get the coordinates */
       trajectory = features.features[0].geometry.coordinates;
     }
-    if(mode === 'line'){
+    if(drawingMode === 'line'){
       trajectory = trajectory[0];
     }
     deleteAll();
+
+    // Compute every features
     var pathComputing = new PathComputing(precision, vehiclePos, circleRadius, maxAngle, turningRadius);
-    console.log('Trajectory',trajectory);
-    var test = trajectory.map(innerArray => [...innerArray]);
-    console.log('Test',test); 
-    [computedTrajectory, limits] = pathComputing.computeTrajectory(test );
-    if(!computedTrajectory){
-      console.log("Error");
+    let result = pathComputing.computeTrajectory(trajectory.map(innerArray => [...innerArray]));
+    //Check if a warning has been raised
+    if(!result){
+      console.warn("There is a problem with the trajectory");
       return;
     }
-    /*for(let i = 0; i < computedTrajectory.length; i++){
-      computedTrajectory[i][0] = computedTrajectory[i][0] + 0.000001;
-      computedTrajectory[i][1] = computedTrajectory[i][1] + 0.000001;
-    }*/
+    [computedTrajectory, limits] = result;
+
+    //Display computed features
     displayTrajectory(drawLayerId, drawSourceId, trajectory,  '#0000FF',"solid");
     displayTrajectory(computedlayerId, computedsourceId, computedTrajectory, '#FF0000',"solid");
-    console.log("limits : ", limits);
     displayTrajectory(rightLimitLayerId, rightLimitSourceId, limits.rightLimit, '#FF0000',"dotted");
     displayTrajectory(leftLimitLayerId, leftLimitSourceId, limits.leftLimit , '#FF0000',"dotted");
     
@@ -244,7 +290,7 @@ export default function App(){
   return (
     <div>
       <div className="bar">
-        <DrawPath mode={mode} moveState={moveState} drawState={drawState}  validation={buildPath} exit={exit} />
+        <DrawPath drawingMode={drawingMode} moveState={moveState} drawState={drawState}  validation={buildPath} exit={exit} />
       </div>
       <div ref={mapContainer} className="map-container" />
     </div>

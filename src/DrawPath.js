@@ -1,8 +1,12 @@
-import React, { useEffect, useState } from 'react';
-import './DrawPath.css'; // adjust the path as needed
-//import { copyFileSync } from 'original-fs';
+/**
+ * @author Mathieu Chantot <mathieu.chantot@hes-so.ch>
+ * @date 01/24
+ */
 
-function DrawPath({mode, moveState, drawState, validation, exit}){
+import React, { useEffect, useState } from 'react';
+import './DrawPath.css';
+
+function DrawPath({drawingMode, moveState, drawState, validation, exit}){
   const [moveColor, setMoveColor] = useState('lightgrey');
   const [dotColor, setDotColor] = useState('white');
   const [lineColor, setLineColor] = useState('white');
@@ -15,33 +19,19 @@ function DrawPath({mode, moveState, drawState, validation, exit}){
     setDotColor(inactiveColor);
     setMoveColor(inactiveColor);
     setValidationColor(inactiveColor);
-    if (mode === 'dot') {
+    if (drawingMode === 'dot') {
       setDotColor(activeColor);
     }
-    if (mode === 'line'){
+    if (drawingMode === 'line'){
       setLineColor(activeColor);
     }
-    if (mode === 'move'){
+    if (drawingMode === 'move'){
       setMoveColor(activeColor);
     }
-    if (mode === 'validation'){ 
+    if (drawingMode === 'validation'){ 
       setValidationColor(activeColor);
     }
-  }, [mode]);
-
-/*  function Start(){
-    if (tablett){
-      return(
-        <div id ="start" className="btn">
-        <button onClick={() => startDrawing()}>
-          Start
-        </button>
-      </div>
-      )
-    }else{
-      return
-    }
-  }*/ 
+  }, [drawingMode]);
 
   return (
     <div id="header">
