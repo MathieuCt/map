@@ -3,11 +3,11 @@
  * @date 01/24
  */
 
-/**	@todo import only what is needed */
-import * as turf from '@turf/turf';
+import {distance, bearing, destination, pointToLineDistance, along, lineString, sector, inside} from '@turf/turf';
 import {Bezier} from "bezier-js";
 import {Smooth} from './Smooth.js';
 
+const turf = {distance, bearing, destination, pointToLineDistance, along, lineString, sector, inside};
 /**
  * This class is used to compute the trajectory that will be sent to the vehicle.
  */
@@ -38,17 +38,14 @@ export class PathComputing{
 	 * @property {boolean} trajectory[].x - The x-coordinate of the point.
 	 */
 	computeTrajectory(trajectory){
-		console.log("trajectory : ", trajectory);
 		let computedTrajectory = [];
 		this.addPoints(trajectory);
 		if(!this.checkStartingAngle(trajectory)){
 			return false;
 		}
-		/**@todo update Smooth to accept even numbers*/
-		let filter = new Smooth(10/(this.maxPointDistance) + 1);
-		trajectory = filter.filter(trajectory);
+		let filter = new Smooth(10/(this.maxPointDistance));
+		trajectory = filter.filter(trajectory)
 		let bezier = this.bezierCurve(trajectory);
-		/**@todo See if deep copy is realy needed*/
 		computedTrajectory.push(...bezier.map(point => [point.x, point.y]));
 		this.addTrajectory(computedTrajectory, trajectory);
 		var Pathlimits = this.vehiclesSize(computedTrajectory);
@@ -62,14 +59,23 @@ export class PathComputing{
 	 * @returns 
 	 */
 	turningRadiusControl(trajectory){
+		const maxAngle = 180/(Math.PI*this.turningRadius);
+		console.log("maxAngle :", maxAngle);
+		console.log(trajectory.length )
 		for(let i = 0; i < trajectory.length - 2; i++){
 			let angle = Math.abs(turf.bearing(trajectory[i], trajectory[i+1])- turf.bearing(trajectory[i+1], trajectory[i+2]));
+			let distance = (turf.distance(trajectory[i], trajectory[i+1])+turf.distance(trajectory[i+1], trajectory[i+2]))*1000/2;
 			/**Remove this log when everything is tested */
-			if("angle :", angle/this.maxPointDistance> 1) {console.log("angle :", angle/this.maxPointDistance)};
-			if(angle/(this.maxPointDistance) > 180/(Math.PI*this.turningRadius)){
+			if(angle > 180){
+				angle = 360 - angle;
+			}
+			if(angle/distance > 10){
+				console.log("angle/distance :", angle/distance,"angle", angle, "distance :", distance);
+			}
+			if(angle/distance > maxAngle ){
 				console.log("Corner too sharp", trajectory[i]);
-				console.log("turningRadius :", 180/(Math.PI*this.turningRadius));
-				return false;
+				console.log("turningRadius :", maxAngle)
+				//return false;
 			}
 		}
 		return true;

@@ -67,3 +67,12 @@ button{
 button:hover{
     background-color: aliceblue;
 }
+
+ #slider{
+    width: 20em;
+    height: 2em;
+    color: #000;
+    display: flex;
+    justify-content: center;
+    z-index: 1;
+ }
